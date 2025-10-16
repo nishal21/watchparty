@@ -352,15 +352,19 @@ app.post('/api/rooms', async (req, res) => {
       });
     }
 
-    const roomId = uuidv4();
+  const roomId = uuidv4();
+  // Allow client to provide a hostId (so host client/user id can be preserved)
+  const clientHostId = req.body.hostId;
+  // Use a consistent host id so the rooms.host.id and participants entries match
+  const hostId = clientHostId || uuidv4();
     const room = {
       id: roomId,
       name,
       anime,
       episode,
       episodeId: episodeId || episode, // Store episodeId if provided, fallback to episode
-      host: { id: uuidv4(), name: hostName },
-      participants: new Map([[roomId, { id: roomId, name: hostName, isHost: true }]]),
+      host: { id: hostId, name: hostName },
+      participants: new Map([[hostId, { id: hostId, name: hostName, isHost: true }]]),
       messages: [],
       playbackState: {
         isPlaying: false,
@@ -381,8 +385,19 @@ app.post('/api/rooms', async (req, res) => {
 
     // Save to database if available
     if (dbAvailable) {
-      await saveRoom(room);
-      await saveParticipant(roomId, room.participants.get(roomId));
+      try {
+        const saved = await saveRoom(room);
+        if (!saved) {
+          console.error(`❌ saveRoom returned null for room ${roomId} - DB save may have failed`);
+        }
+
+        const savedParticipant = await saveParticipant(roomId, room.participants.get(hostId));
+        if (!savedParticipant) {
+          console.error(`❌ saveParticipant returned null for participant ${hostId} in room ${roomId}`);
+        }
+      } catch (err) {
+        console.error('❌ Exception while saving room/participant to DB:', err);
+      }
     }
 
     // Set timeout for room cleanup
