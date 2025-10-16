@@ -208,6 +208,7 @@ app.get('/api/room', async (req, res) => {
       name: room.name,
       anime: room.anime,
       episode: room.episode,
+      episodeId: room.episodeId,
       host: room.host,
       participants: Array.from(room.participants.values()),
       messages: room.messages.slice(-50), // Last 50 messages
@@ -342,7 +343,7 @@ app.post('/api/room/:roomId/playback', async (req, res) => {
 // Create room via API
 app.post('/api/rooms', async (req, res) => {
   try {
-    const { name, anime, episode, hostName, settings } = req.body;
+    const { name, anime, episode, episodeId, hostName, settings } = req.body;
 
     if (!name || !anime || !episode || !hostName) {
       return res.status(400).json({
@@ -357,6 +358,7 @@ app.post('/api/rooms', async (req, res) => {
       name,
       anime,
       episode,
+      episodeId: episodeId || episode, // Store episodeId if provided, fallback to episode
       host: { id: uuidv4(), name: hostName },
       participants: new Map([[roomId, { id: roomId, name: hostName, isHost: true }]]),
       messages: [],
@@ -405,6 +407,7 @@ app.post('/api/rooms', async (req, res) => {
         name,
         anime,
         episode,
+        episodeId: episodeId || episode,
         host: room.host,
         participantCount: 1
       }
@@ -518,6 +521,7 @@ io.on('connection', (socket) => {
           name: room.name,
           anime: room.anime,
           episode: room.episode,
+          episodeId: room.episodeId,
           host: room.host,
           participants: Array.from(room.participants.values()),
           messages: room.messages.slice(-50), // Last 50 messages
