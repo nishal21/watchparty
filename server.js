@@ -91,7 +91,7 @@ let roomTimeouts = new Map();
 // Room timeout cleanup (30 minutes of inactivity)
 const ROOM_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
-function cleanupInactiveRooms() {
+function cleanupMemoryRooms() {
   const now = Date.now();
   for (const [roomId, timeoutId] of roomTimeouts) {
     if (!rooms.has(roomId)) {
@@ -118,7 +118,7 @@ function cleanupInactiveRooms() {
 }
 
 // Run cleanup every 5 minutes
-setInterval(cleanupInactiveRooms, 5 * 60 * 1000);
+setInterval(cleanupMemoryRooms, 5 * 60 * 1000);
 
 // API Routes
 app.get('/', (req, res) => {
