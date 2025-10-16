@@ -175,6 +175,53 @@ app.get('/api/rooms', (req, res) => {
   res.json({ rooms: roomList });
 });
 
+// Get specific room data
+app.get('/api/room', async (req, res) => {
+  try {
+    const { id: roomId } = req.query;
+
+    if (!roomId) {
+      return res.status(400).json({ error: 'Room ID is required as query parameter ?id=' });
+    }
+
+    let room = rooms.get(roomId);
+
+    // Try to load from database if not in memory and DB is available
+    if (!room && dbAvailable) {
+      room = await getRoom(roomId);
+      if (room) {
+        // Reconstruct room in memory
+        rooms.set(roomId, {
+          ...room,
+          participants: new Map(room.participants.map(p => [p.id, p]))
+        });
+      }
+    }
+
+    if (!room) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
+
+    // Return room data
+    res.json({
+      id: room.id,
+      name: room.name,
+      anime: room.anime,
+      episode: room.episode,
+      host: room.host,
+      participants: Array.from(room.participants.values()),
+      messages: room.messages.slice(-50), // Last 50 messages
+      playbackState: room.playbackState,
+      settings: room.settings,
+      created: room.created,
+      lastActivity: room.lastActivity
+    });
+  } catch (error) {
+    console.error('❌ Error getting room:', error);
+    res.status(500).json({ error: 'Failed to get room data' });
+  }
+});
+
 // Create room via API
 app.post('/api/rooms', async (req, res) => {
   try {
