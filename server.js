@@ -352,11 +352,9 @@ app.post('/api/rooms', async (req, res) => {
       });
     }
 
-  const roomId = uuidv4();
-  // Allow client to provide a hostId (so host client/user id can be preserved)
-  const clientHostId = req.body.hostId;
-  // Use a consistent host id so the rooms.host.id and participants entries match
-  const hostId = clientHostId || uuidv4();
+    const roomId = uuidv4();
+    // Use a consistent host id so the rooms.host.id and participants entries match
+    const hostId = uuidv4();
     const room = {
       id: roomId,
       name,
