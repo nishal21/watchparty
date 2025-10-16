@@ -222,6 +222,123 @@ app.get('/api/room', async (req, res) => {
   }
 });
 
+// Add message to room (for polling mode)
+app.post('/api/room/:roomId/message', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { content, userName, userId } = req.body;
+
+    if (!content || !userName) {
+      return res.status(400).json({ error: 'Content and userName are required' });
+    }
+
+    let room = rooms.get(roomId);
+
+    // Try to load from database if not in memory
+    if (!room && dbAvailable) {
+      room = await getRoom(roomId);
+      if (room) {
+        rooms.set(roomId, {
+          ...room,
+          participants: new Map(room.participants.map(p => [p.id, p]))
+        });
+      }
+    }
+
+    if (!room) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
+
+    if (!room.settings.allowChat) {
+      return res.status(403).json({ error: 'Chat is disabled in this room' });
+    }
+
+    // Find participant (or create anonymous)
+    let participant = Array.from(room.participants.values()).find(p => p.id === userId || p.name === userName);
+    if (!participant) {
+      participant = { id: userId || uuidv4(), name: userName, isHost: false };
+      room.participants.set(participant.id, participant);
+      if (dbAvailable) {
+        await saveParticipant(roomId, participant);
+      }
+    }
+
+    const message = {
+      id: uuidv4(),
+      userId: participant.id,
+      userName: participant.name,
+      content,
+      timestamp: new Date().toISOString()
+    };
+
+    room.messages.push(message);
+    room.lastActivity = Date.now();
+
+    // Save message to database if available
+    if (dbAvailable) {
+      await saveMessage(roomId, message);
+    }
+
+    // Keep only last 100 messages
+    if (room.messages.length > 100) {
+      room.messages = room.messages.slice(-100);
+    }
+
+    // Broadcast via socket.io if connected clients
+    io.to(roomId).emit('new-message', message);
+
+    res.json({ success: true, message });
+  } catch (error) {
+    console.error('❌ Error adding message:', error);
+    res.status(500).json({ error: 'Failed to add message' });
+  }
+});
+
+// Update playback state (for polling mode)
+app.post('/api/room/:roomId/playback', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const playbackData = req.body;
+
+    let room = rooms.get(roomId);
+
+    // Try to load from database if not in memory
+    if (!room && dbAvailable) {
+      room = await getRoom(roomId);
+      if (room) {
+        rooms.set(roomId, {
+          ...room,
+          participants: new Map(room.participants.map(p => [p.id, p]))
+        });
+      }
+    }
+
+    if (!room) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
+
+    if (!room.settings.syncPlayback) {
+      return res.status(403).json({ error: 'Playback sync is disabled in this room' });
+    }
+
+    room.playbackState = {
+      ...room.playbackState,
+      ...playbackData,
+      lastUpdated: Date.now()
+    };
+
+    room.lastActivity = Date.now();
+
+    // Broadcast via socket.io if connected clients
+    io.to(roomId).emit('playback-updated', room.playbackState);
+
+    res.json({ success: true, playbackState: room.playbackState });
+  } catch (error) {
+    console.error('❌ Error updating playback:', error);
+    res.status(500).json({ error: 'Failed to update playback' });
+  }
+});
+
 // Create room via API
 app.post('/api/rooms', async (req, res) => {
   try {
