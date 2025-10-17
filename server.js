@@ -345,6 +345,9 @@ app.post('/api/rooms', async (req, res) => {
   try {
     const { name, anime, episode, episodeId, hostName, settings } = req.body;
 
+    // Log incoming creation payload for diagnostics
+    console.log('POST /api/rooms payload:', { name, anime, episode, episodeId, hostName });
+
     if (!name || !anime || !episode || !hostName) {
       return res.status(400).json({
         success: false,
