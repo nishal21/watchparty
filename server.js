@@ -23,16 +23,25 @@ dotenv.config();
 
 // Initialize database connection
 let dbAvailable = false;
-if (process.env.NEON_DB_URL) {
-  dbAvailable = await testConnection();
-  if (dbAvailable) {
-    console.log('💾 Database persistence enabled');
-  } else {
-    console.log('⚠️  Database connection failed, using in-memory storage');
+// Initialize DB connection safely inside an async IIFE so any errors are caught
+(async () => {
+  try {
+    if (process.env.NEON_DB_URL) {
+      const ok = await testConnection();
+      dbAvailable = !!ok;
+      if (dbAvailable) {
+        console.log('💾 Database persistence enabled');
+      } else {
+        console.log('⚠️  Database connection failed, using in-memory storage');
+      }
+    } else {
+      console.log('⚠️  No database URL provided, using in-memory storage');
+    }
+  } catch (err) {
+    console.error('❌ Error during DB initialization:', err);
+    dbAvailable = false;
   }
-} else {
-  console.log('⚠️  No database URL provided, using in-memory storage');
-}
+})();
 
 const app = express();
 const server = createServer(app);
@@ -83,6 +92,9 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Ensure OPTIONS preflight requests get proper CORS response immediately
+app.options('*', cors(corsOptions));
 
 // Body parser
 app.use(express.json({ limit: '10mb' }));
@@ -586,23 +598,13 @@ io.on('connection', (socket) => {
           name: room.name,
           anime: room.anime,
           episode: room.episode,
-          episodeId: room.episodeId,
+          episodeId: room.episodeId || null,
           host: room.host,
-           room.episodeId = episodeId || null;
+          participants: Array.from(room.participants.values()),
           messages: room.messages.slice(-50), // Last 50 messages
           playbackState: room.playbackState,
           settings: room.settings
         }
-             try {
-               const result = await query(
-                 'UPDATE rooms SET episode = $1, episode_id = $2, last_activity = $3 WHERE id = $4 RETURNING id, episode, episode_id, last_activity',
-                 [episodeTitle, episodeId || null, new Date(room.lastActivity).toISOString(), roomId]
-               );
-               console.log('✅ DB updated room episode:', result.rows[0]);
-             } catch (err) {
-               console.error('❌ Failed to update room episode in DB:', err);
-             }
-        participant: room.participants.get(socket.id)
       });
 
       console.log(`👥 ${userName} joined room: ${roomId}`);
