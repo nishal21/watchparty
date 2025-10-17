@@ -15,7 +15,8 @@ import {
   removeParticipant,
   saveMessage,
   getRecentMessages,
-  cleanupInactiveRooms
+  cleanupInactiveRooms,
+  query
 } from './db/index.js';
 
 dotenv.config();
@@ -342,6 +343,51 @@ app.post('/api/room/:roomId/playback', async (req, res) => {
   }
 });
 
+// Update room episode (for polling mode)
+app.post('/api/room/:roomId/episode', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { episodeId, episodeTitle } = req.body;
+
+    let room = rooms.get(roomId);
+
+    // Try to load from database if not in memory
+    if (!room && dbAvailable) {
+      room = await getRoom(roomId);
+      if (room) {
+        rooms.set(roomId, {
+          ...room,
+          participants: new Map(room.participants.map(p => [p.id, p]))
+        });
+      }
+    }
+
+    if (!room) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
+
+    room.episode = episodeTitle;
+    room.episodeId = episodeId;
+    room.lastActivity = Date.now();
+
+    // Save to database if available
+    if (dbAvailable) {
+      await query(
+        'UPDATE rooms SET episode = $1, episode_id = $2, last_activity = $3 WHERE id = $4',
+        [episodeTitle, episodeId, new Date(room.lastActivity).toISOString(), roomId]
+      );
+    }
+
+    // Broadcast via socket.io if connected clients
+    io.to(roomId).emit('room-episode-updated', { episodeId, episodeTitle });
+
+    res.json({ success: true, episodeId, episodeTitle });
+  } catch (error) {
+    console.error('❌ Error updating room episode:', error);
+    res.status(500).json({ error: 'Failed to update room episode' });
+  }
+});
+
 // Create room via API
 app.post('/api/rooms', async (req, res) => {
   try {
@@ -652,6 +698,33 @@ io.on('connection', (socket) => {
       ...room.playbackState,
       updatedBy: socket.id
     });
+  });
+
+  // Update room episode
+  socket.on('update-room-episode', async (data) => {
+    if (!currentRoom) return;
+
+    const room = rooms.get(currentRoom);
+    if (!room) return;
+
+    const participant = room.participants.get(socket.id);
+    if (!participant) return;
+
+    const { episodeId, episodeTitle } = data;
+    room.episode = episodeTitle;
+    room.episodeId = episodeId;
+    room.lastActivity = Date.now();
+
+    // Save to database if available
+    if (dbAvailable) {
+      await query(
+        'UPDATE rooms SET episode = $1, episode_id = $2, last_activity = $3 WHERE id = $4',
+        [episodeTitle, episodeId, new Date(room.lastActivity).toISOString(), currentRoom]
+      );
+    }
+
+    // Broadcast to all participants
+    io.to(currentRoom).emit('room-episode-updated', { episodeId, episodeTitle });
   });
 
   // Kick participant (host only)
