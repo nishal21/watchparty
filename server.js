@@ -411,7 +411,8 @@ app.post('/api/rooms', async (req, res) => {
       name,
       anime,
       episode,
-      episodeId: episodeId || episode, // Store episodeId if provided, fallback to episode
+       // Store episodeId if provided; prefer explicit episodeId (numeric id). Do NOT fallback to episode title.
+       episodeId: episodeId || null,
       host: { id: hostId, name: hostName },
       participants: new Map([[hostId, { id: hostId, name: hostName, isHost: true }]]),
       messages: [],
@@ -587,15 +588,20 @@ io.on('connection', (socket) => {
           episode: room.episode,
           episodeId: room.episodeId,
           host: room.host,
-          participants: Array.from(room.participants.values()),
+           room.episodeId = episodeId || null;
           messages: room.messages.slice(-50), // Last 50 messages
           playbackState: room.playbackState,
           settings: room.settings
         }
-      });
-
-      // Notify others
-      socket.to(roomId).emit('participant-joined', {
+             try {
+               const result = await query(
+                 'UPDATE rooms SET episode = $1, episode_id = $2, last_activity = $3 WHERE id = $4 RETURNING id, episode, episode_id, last_activity',
+                 [episodeTitle, episodeId || null, new Date(room.lastActivity).toISOString(), roomId]
+               );
+               console.log('✅ DB updated room episode:', result.rows[0]);
+             } catch (err) {
+               console.error('❌ Failed to update room episode in DB:', err);
+             }
         participant: room.participants.get(socket.id)
       });
 
