@@ -61,7 +61,9 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
   'http://localhost:4173',
   'https://otazumi.netlify.app',
   'https://otazumi.page',
-  'https://www.otazumi.page'
+  'https://www.otazumi.page',
+  'https://watchparty-otazumi.vercel.app',
+  'https://party.otazumi.page'
 ];
 
 const corsOptions = {
