@@ -292,7 +292,12 @@ app.post('/api/room/:roomId/message', async (req, res) => {
 
     // Save message to database if available
     if (dbAvailable) {
-      await saveMessage(roomId, message);
+      try {
+        const savedMsg = await saveMessage(roomId, message);
+        console.log('DB saveMessage result for', message.id, ':', savedMsg && savedMsg.id ? savedMsg.id : savedMsg);
+      } catch (err) {
+        console.error('❌ Failed to save message to DB:', err);
+      }
     }
 
     // Keep only last 100 messages
@@ -384,10 +389,15 @@ app.post('/api/room/:roomId/episode', async (req, res) => {
 
     // Save to database if available
     if (dbAvailable) {
-      await query(
-        'UPDATE rooms SET episode = $1, episode_id = $2, last_activity = $3 WHERE id = $4',
-        [episodeTitle, episodeId, new Date(room.lastActivity).toISOString(), roomId]
-      );
+      try {
+        const result = await query(
+          'UPDATE rooms SET episode = $1, episode_id = $2, last_activity = $3 WHERE id = $4 RETURNING id, episode_id',
+          [episodeTitle, episodeId, new Date(room.lastActivity).toISOString(), roomId]
+        );
+        console.log('DB update episode result for', roomId, ':', result && result.rows && result.rows[0] ? result.rows[0] : result);
+      } catch (err) {
+        console.error('❌ Failed to update episode in DB:', err);
+      }
     }
 
     // Broadcast via socket.io if connected clients
@@ -449,11 +459,13 @@ app.post('/api/rooms', async (req, res) => {
     if (dbAvailable) {
       try {
         const saved = await saveRoom(room);
+        console.log('DB saveRoom result for', roomId, ':', saved && saved.id ? saved.id : saved);
         if (!saved) {
           console.error(`❌ saveRoom returned null for room ${roomId} - DB save may have failed`);
         }
 
         const savedParticipant = await saveParticipant(roomId, room.participants.get(hostId));
+        console.log('DB saveParticipant result for', hostId, ':', savedParticipant && savedParticipant.id ? savedParticipant.id : savedParticipant);
         if (!savedParticipant) {
           console.error(`❌ saveParticipant returned null for participant ${hostId} in room ${roomId}`);
         }
@@ -484,7 +496,7 @@ app.post('/api/rooms', async (req, res) => {
         name,
         anime,
         episode,
-        episodeId: episodeId || episode,
+        episodeId: room.episodeId,
         host: room.host,
         participantCount: 1
       }
@@ -586,7 +598,12 @@ io.on('connection', (socket) => {
 
       // Save participant to database if available
       if (dbAvailable) {
-        await saveParticipant(roomId, participant);
+        try {
+          const savedP = await saveParticipant(roomId, participant);
+          console.log('DB saveParticipant (socket) result for', participant.id, ':', savedP && savedP.id ? savedP.id : savedP);
+        } catch (err) {
+          console.error('❌ Failed to save participant on socket join to DB:', err);
+        }
       }
 
       room.lastActivity = Date.now();
@@ -725,10 +742,15 @@ io.on('connection', (socket) => {
 
     // Save to database if available
     if (dbAvailable) {
-      await query(
-        'UPDATE rooms SET episode = $1, episode_id = $2, last_activity = $3 WHERE id = $4',
-        [episodeTitle, episodeId, new Date(room.lastActivity).toISOString(), currentRoom]
-      );
+      try {
+        const result = await query(
+          'UPDATE rooms SET episode = $1, episode_id = $2, last_activity = $3 WHERE id = $4 RETURNING id, episode_id',
+          [episodeTitle, episodeId, new Date(room.lastActivity).toISOString(), currentRoom]
+        );
+        console.log('DB update episode (socket) result for', currentRoom, ':', result && result.rows && result.rows[0] ? result.rows[0] : result);
+      } catch (err) {
+        console.error('❌ Failed to update episode in DB (socket):', err);
+      }
     }
 
     // Broadcast to all participants
